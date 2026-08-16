@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Semantic Search Engine</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 24px;
+        background: #f6f8fb;
+      }
+      .container {
+        max-width: 1100px;
+        margin: auto;
+      }
+      .controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+      input, select, button {
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #d0d7de;
+      }
+      input {
+        flex: 1;
+        min-width: 220px;
+      }
+      button {
+        background: #1f6feb;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      .result-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      .metadata {
+        color: #555;
+        font-size: 0.85rem;
+        margin-bottom: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Semantic Search Engine</h1>
+      <div class="controls">
+        <input id="queryInput" type="text" placeholder="Enter a natural-language query..." />
+        <select id="methodSelect">
+          <option value="semantic">Semantic</option>
+          <option value="bm25">BM25</option>
+          <option value="hybrid">Hybrid</option>
+        </select>
+        <select id="topKSelect">
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+          <option value="20">Top 20</option>
+        </select>
+        <button id="searchBtn">Search</button>
+      </div>
+      <div id="results"></div>
+    </div>
+
+    <script>
+      const resultsContainer = document.getElementById('results');
+      document.getElementById('searchBtn').addEventListener('click', async () => {
+        const query = document.getElementById('queryInput').value.trim();
+        const method = document.getElementById('methodSelect').value;
+        const topK = Number(document.getElementById('topKSelect').value);
+
+        if (!query) {
+          resultsContainer.innerHTML = '<p>Please enter a query.</p>';
+          return;
+        }
+
+        resultsContainer.innerHTML = '<p>Searching...</p>';
+        try {
+          const response = await fetch('http://localhost:8000/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, method, top_k: topK })
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.detail || 'Search failed');
+          }
+
+          const results = payload.results || [];
+          if (!results.length) {
+            resultsContainer.innerHTML = '<p>No results found.</p>';
+            return;
+          }
+
+          resultsContainer.innerHTML = results.map((item) => `
+            <div class="result-card">
+              <div class="metadata">Rank #${item.rank} | Score: ${item.score.toFixed(4)} | ID: ${item.document_id}</div>
+              <div>${item.text}</div>
+            </div>
+          `).join('');
+        } catch (error) {
+          resultsContainer.innerHTML = `<p>Error: ${error.message}</p>`;
+        }
+      });
+    </script>
+  </body>
+</html>

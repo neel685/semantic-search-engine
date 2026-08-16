@@ -1,0 +1,27 @@
+dataset:
+  name: msmarco
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  index_path: "data/index"
+  max_documents: 300
+  max_queries: 50
+  split: "train"
+  min_doc_length: 20
+
+embedding:
+  model_name: "BAAI/bge-small-en-v1.5"
+  batch_size: 32
+  normalize: true
+  device: "auto"
+
+retrieval:
+  top_k: 10
+  bm25_k1: 1.5
+  bm25_b: 0.75
+  hybrid_alpha: 0.5
+  index_type: "IndexFlatIP"
+  distance_metric: "cosine"
+
+system:
+  device: "auto"
+  seed: 42
