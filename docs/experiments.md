@@ -42,3 +42,17 @@ Hybrid
 ```
 
 The values are produced by running the evaluation script on the configured dataset subset in config.yaml.
+
+## RAG evaluation
+
+The RAG pipeline is evaluated separately from the retrieval baselines:
+
+- Context Recall@K: whether relevant qrel passages reach the generated context
+- Context Precision@K: fraction of context passages judged relevant by qrels
+- Retrieval, reranking, and optional generation latency
+- Faithfulness and answer relevance lexical proxies when `--generate` is used
+
+Run `python scripts/evaluate_rag.py` for context metrics, or add
+`--generate` to call Ollama and record answer-level proxies. The proxies are
+diagnostics, not semantic judge scores; human or model-based evaluation is
+needed for a publication-quality faithfulness claim.

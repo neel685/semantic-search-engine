@@ -180,6 +180,29 @@ python scripts/evaluate.py
 
 This prints a table of retrieval metrics and saves the results under results/. Plots are saved under results/figures/.
 
+### Evaluating RAG
+
+RAG evaluation is separate from retrieval evaluation. Run the context-quality
+evaluation with:
+
+```bash
+python scripts/evaluate_rag.py
+```
+
+This reports Context Recall@5, Context Precision@5, retrieval latency, and
+reranking latency, and saves per-query results to
+`results/rag_evaluation.json`. To also call the configured Ollama generator:
+
+```bash
+python scripts/evaluate_rag.py --generate --limit 10
+```
+
+The generated-answer metrics are explicitly lightweight lexical proxies:
+`faithfulness_proxy` measures answer-sentence overlap with retrieved context,
+and `answer_relevance_proxy` measures query-answer term overlap. They are not
+replacements for human or semantic judge evaluation, but provide reproducible
+diagnostics without claiming unsupported RAG accuracy.
+
 The generated dataset subset, FAISS index, evaluation outputs, and plots are ignored by git so the repository stays source-only when you push it.
 
 ## Starting the API
@@ -195,6 +218,33 @@ curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
   -d '{"query":"what is rba","top_k":5,"method":"semantic"}'
 ```
+
+## Running RAG answers
+
+The `/ask` endpoint retrieves passages with hybrid search, reranks them with the
+configured cross-encoder, and generates a grounded answer through Ollama.
+
+Install Ollama, download the configured generator, and start Ollama:
+
+```bash
+ollama pull qwen3:8b
+ollama serve
+```
+
+The API startup loads the configured embedding model, and the first `/ask`
+request loads the reranker. These models are downloaded from Hugging Face if
+they are not cached. Rebuild the FAISS index after changing
+`embedding.model_name`:
+
+```bash
+python scripts/build_index.py
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"query":"what is the purpose of the reserve bank","top_k":5}'
+```
+
+The response contains the generated answer and the source passages used as
+context. `/search` remains available for retrieval-only benchmarking.
 
 ## Starting the frontend
 

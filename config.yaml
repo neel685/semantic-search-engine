@@ -9,7 +9,7 @@ dataset:
   min_doc_length: 20
 
 embedding:
-  model_name: "BAAI/bge-small-en-v1.5"
+  model_name: "Qwen/Qwen3-Embedding-0.6B"
   batch_size: 32
   normalize: true
   device: "auto"
@@ -21,6 +21,19 @@ retrieval:
   hybrid_alpha: 0.5
   index_type: "IndexFlatIP"
   distance_metric: "cosine"
+
+reranking:
+  enabled: true
+  model_name: "BAAI/bge-reranker-v2-m3"
+  batch_size: 16
+
+generation:
+  provider: "ollama"
+  model_name: "qwen3:8b"
+  base_url: "http://localhost:11434"
+  temperature: 0.0
+  timeout_seconds: 120
+  max_context_characters: 12000
 
 system:
   device: "auto"

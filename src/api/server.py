@@ -12,6 +12,9 @@ from src.data.loader import load_processed_data
 from src.retrieval.bm25 import BM25Retriever
 from src.retrieval.dense import DenseRetriever
 from src.retrieval.hybrid import HybridRetriever
+from src.retrieval.reranker import CrossEncoderReranker
+from src.generation.context import build_context
+from src.generation.ollama import OllamaGenerator
 
 
 class SearchRequest(BaseModel):
@@ -31,6 +34,17 @@ class SearchResponse(BaseModel):
     query: str
     method: str
     results: list[SearchResult]
+
+
+class AskRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="Question to answer")
+    top_k: int = Field(default=5, ge=1, le=20, description="Number of source passages")
+
+
+class AskResponse(BaseModel):
+    query: str
+    answer: str
+    sources: list[SearchResult]
 
 
 class SearchEngine:
@@ -71,6 +85,27 @@ class SearchEngine:
             dense_retriever=self.dense,
             alpha=float(retrieval_cfg.get("hybrid_alpha", 0.5)),
         ) if self.documents and self.bm25 and self.dense else None
+        reranking_cfg = self.config.get("reranking", {})
+        self.reranker = (
+            CrossEncoderReranker(
+                model_name=reranking_cfg.get("model_name", "BAAI/bge-reranker-v2-m3"),
+                device=embedding_cfg.get("device", "auto"),
+                batch_size=int(reranking_cfg.get("batch_size", 16)),
+            )
+            if bool(reranking_cfg.get("enabled", True))
+            else None
+        )
+        generation_cfg = self.config.get("generation", {})
+        self.generator = (
+            OllamaGenerator(
+                model_name=generation_cfg.get("model_name", "qwen3:8b"),
+                base_url=generation_cfg.get("base_url", "http://localhost:11434"),
+                temperature=float(generation_cfg.get("temperature", 0.0)),
+                timeout=float(generation_cfg.get("timeout_seconds", 120)),
+            )
+            if generation_cfg.get("provider", "ollama") == "ollama"
+            else None
+        )
 
     def search(self, query: str, method: str = "hybrid", top_k: int = 10) -> list[dict[str, float | int | str]]:
         if not self.documents:
@@ -95,6 +130,31 @@ class SearchEngine:
             for item in results
         ]
 
+    def answer(self, query: str, top_k: int = 5) -> tuple[str, list[dict[str, float | int | str]]]:
+        candidate_k = max(top_k * 6, 20)
+        candidates = self.search(query, method="hybrid", top_k=candidate_k)
+        if self.reranker is not None:
+            candidates = self.reranker.rank(query, candidates, top_k=top_k)
+        else:
+            candidates = candidates[:top_k]
+        sources = [
+            {
+                "rank": index,
+                "document_id": str(item["document_id"]),
+                "score": float(item["score"]),
+                "text": str(item["text"]),
+            }
+            for index, item in enumerate(candidates, start=1)
+        ]
+        if self.generator is None:
+            raise HTTPException(status_code=503, detail="No answer generator is configured.")
+        context_cfg = self.config.get("generation", {})
+        context = build_context(
+            sources,
+            max_characters=int(context_cfg.get("max_context_characters", 12000)),
+        )
+        return self.generator.generate(query, context), sources
+
 
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     app = FastAPI(title="Semantic Search Engine API", version="1.0.0")
@@ -117,6 +177,17 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=400, detail="Query cannot be empty.")
         results = app.state.search_engine.search(request.query, method=request.method, top_k=request.top_k)
         return SearchResponse(query=request.query, method=request.method, results=[SearchResult(**result) for result in results])
+
+    @app.post("/ask", response_model=AskResponse)
+    def ask(request: AskRequest) -> AskResponse:
+        if not request.query.strip():
+            raise HTTPException(status_code=400, detail="Question cannot be empty.")
+        answer, sources = app.state.search_engine.answer(request.query, top_k=request.top_k)
+        return AskResponse(
+            query=request.query,
+            answer=answer,
+            sources=[SearchResult(**source) for source in sources],
+        )
 
     return app
 

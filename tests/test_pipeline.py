@@ -6,7 +6,14 @@ from fastapi.testclient import TestClient
 from src.api.server import app
 from src.data.preprocessing import clean_text
 from src.embeddings.encoder import EmbeddingEncoder
-from src.evaluation.metrics import mrr_at_k, ndcg_at_k, recall_at_k
+from src.evaluation.metrics import (
+    answer_relevance_proxy,
+    context_precision_at_k,
+    faithfulness_proxy,
+    mrr_at_k,
+    ndcg_at_k,
+    recall_at_k,
+)
 from src.retrieval.bm25 import BM25Retriever
 from src.retrieval.dense import DenseRetriever
 from src.retrieval.hybrid import HybridRetriever
@@ -78,6 +85,9 @@ def test_evaluation_metrics() -> None:
     assert recall_at_k(relevant, retrieved, 3) == 0.5
     assert mrr_at_k(relevant, retrieved, 3) == 1 / 2
     assert ndcg_at_k(relevant, retrieved, 3) > 0.0
+    assert context_precision_at_k(relevant, retrieved, 3) == 1 / 3
+    assert faithfulness_proxy("Apple is a fruit.", "Apple is a fruit with red skin.") == 1.0
+    assert answer_relevance_proxy("apple fruit", "Apple is a fruit.") == 1.0
 
 
 def test_api_validation() -> None:

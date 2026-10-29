@@ -9,6 +9,7 @@
         font-family: Arial, sans-serif;
         margin: 24px;
         background: #f6f8fb;
+        color: #172033;
       }
       .container {
         max-width: 1100px;
@@ -35,6 +36,30 @@
         border: none;
         cursor: pointer;
       }
+      button:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
+      .answer-card {
+        background: #eef6ff;
+        border: 1px solid #b9d8ff;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .answer-card h2 {
+        margin-top: 0;
+      }
+      .answer {
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
+      .sources-heading {
+        margin: 18px 0 10px;
+      }
+      .error {
+        color: #b42318;
+      }
       .result-card {
         background: white;
         border: 1px solid #e5e7eb;
@@ -54,6 +79,10 @@
       <h1>Semantic Search Engine</h1>
       <div class="controls">
         <input id="queryInput" type="text" placeholder="Enter a natural-language query..." />
+        <select id="modeSelect" aria-label="Response mode">
+          <option value="ask">Ask with RAG</option>
+          <option value="search">Search passages</option>
+        </select>
         <select id="methodSelect">
           <option value="semantic">Semantic</option>
           <option value="bm25">BM25</option>
@@ -66,49 +95,118 @@
         </select>
         <button id="searchBtn">Search</button>
       </div>
+      <p id="status" aria-live="polite"></p>
       <div id="results"></div>
     </div>
 
     <script>
+      const apiBase = 'http://localhost:8000';
+      const queryInput = document.getElementById('queryInput');
+      const modeSelect = document.getElementById('modeSelect');
+      const methodSelect = document.getElementById('methodSelect');
+      const topKSelect = document.getElementById('topKSelect');
+      const searchButton = document.getElementById('searchBtn');
       const resultsContainer = document.getElementById('results');
-      document.getElementById('searchBtn').addEventListener('click', async () => {
-        const query = document.getElementById('queryInput').value.trim();
-        const method = document.getElementById('methodSelect').value;
-        const topK = Number(document.getElementById('topKSelect').value);
+      const status = document.getElementById('status');
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function renderSources(sources, heading = 'Sources') {
+        if (!sources.length) {
+          return '<p>No source passages were returned.</p>';
+        }
+        return `
+          <h3 class="sources-heading">${heading}</h3>
+          ${sources.map((item) => `
+            <div class="result-card">
+              <div class="metadata">
+                Rank #${item.rank} | Score: ${Number(item.score).toFixed(4)} |
+                ID: ${escapeHtml(item.document_id)}
+              </div>
+              <div>${escapeHtml(item.text)}</div>
+            </div>
+          `).join('')}
+        `;
+      }
+
+      function setModeVisibility() {
+        const isAsk = modeSelect.value === 'ask';
+        methodSelect.hidden = isAsk;
+        searchButton.textContent = isAsk ? 'Ask' : 'Search';
+      }
+
+      async function runQuery() {
+        const query = queryInput.value.trim();
+        const mode = modeSelect.value;
+        const topK = Number(topKSelect.value);
 
         if (!query) {
-          resultsContainer.innerHTML = '<p>Please enter a query.</p>';
+          status.textContent = 'Please enter a query.';
+          status.className = 'error';
+          resultsContainer.innerHTML = '';
           return;
         }
 
-        resultsContainer.innerHTML = '<p>Searching...</p>';
+        const endpoint = mode === 'ask' ? '/ask' : '/search';
+        const body = mode === 'ask'
+          ? { query, top_k: topK }
+          : { query, method: methodSelect.value, top_k: topK };
+        searchButton.disabled = true;
+        status.textContent = mode === 'ask'
+          ? 'Retrieving, reranking, and generating an answer...'
+          : 'Searching...';
+        status.className = '';
+        resultsContainer.innerHTML = '';
         try {
-          const response = await fetch('http://localhost:8000/search', {
+          const response = await fetch(`${apiBase}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, method, top_k: topK })
+            body: JSON.stringify(body)
           });
           const payload = await response.json();
           if (!response.ok) {
-            throw new Error(payload.detail || 'Search failed');
+            throw new Error(payload.detail || 'Request failed');
           }
 
-          const results = payload.results || [];
-          if (!results.length) {
-            resultsContainer.innerHTML = '<p>No results found.</p>';
-            return;
+          if (mode === 'ask') {
+            const sources = payload.sources || [];
+            resultsContainer.innerHTML = `
+              <section class="answer-card">
+                <h2>Answer</h2>
+                <div class="answer">${escapeHtml(payload.answer || '')}</div>
+              </section>
+              ${renderSources(sources)}
+            `;
+          } else {
+            const results = payload.results || [];
+            resultsContainer.innerHTML = results.length
+              ? renderSources(results, 'Retrieved passages')
+              : '<p>No results found.</p>';
           }
-
-          resultsContainer.innerHTML = results.map((item) => `
-            <div class="result-card">
-              <div class="metadata">Rank #${item.rank} | Score: ${item.score.toFixed(4)} | ID: ${item.document_id}</div>
-              <div>${item.text}</div>
-            </div>
-          `).join('');
+          status.textContent = '';
         } catch (error) {
-          resultsContainer.innerHTML = `<p>Error: ${error.message}</p>`;
+          status.textContent = `Error: ${error.message}`;
+          status.className = 'error';
+        } finally {
+          searchButton.disabled = false;
+        }
+      }
+
+      modeSelect.addEventListener('change', setModeVisibility);
+      searchButton.addEventListener('click', runQuery);
+      queryInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          runQuery();
         }
       });
+      setModeVisibility();
     </script>
   </body>
 </html>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Iterable, Sequence
 
 
@@ -40,3 +41,43 @@ def ndcg_at_k(relevant: Iterable[str] | set[str], retrieved: Sequence[str], k: i
     if idcg == 0.0:
         return 0.0
     return dcg / idcg
+
+
+def context_precision_at_k(
+    relevant: Iterable[str] | set[str],
+    retrieved: Sequence[str],
+    k: int,
+) -> float:
+    """Share of the top-k context passages judged relevant by the qrels."""
+    top_k = retrieved[:k]
+    if not top_k:
+        return 0.0
+    relevant_set = set(relevant)
+    return sum(doc_id in relevant_set for doc_id in top_k) / len(top_k)
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"\b[a-zA-Z0-9][a-zA-Z0-9'-]*\b", text.lower()))
+
+
+def faithfulness_proxy(answer: str, context: str) -> float:
+    """Estimate supported answer sentences using lexical context overlap.
+
+    This is deliberately named a proxy: use a human or model judge for a
+    semantic faithfulness score in a production evaluation.
+    """
+    sentences = [sentence.strip() for sentence in re.split(r"[.!?]+", answer) if sentence.strip()]
+    context_tokens = _tokens(context)
+    if not sentences:
+        return 0.0
+    supported = sum(bool(_tokens(sentence) & context_tokens) for sentence in sentences)
+    return supported / len(sentences)
+
+
+def answer_relevance_proxy(query: str, answer: str) -> float:
+    """Estimate query-answer topical overlap as a lightweight proxy."""
+    query_tokens = _tokens(query)
+    answer_tokens = _tokens(answer)
+    if not query_tokens or not answer_tokens:
+        return 0.0
+    return len(query_tokens & answer_tokens) / len(query_tokens)
