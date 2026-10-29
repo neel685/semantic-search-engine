@@ -56,3 +56,8 @@ Run `python scripts/evaluate_rag.py` for context metrics, or add
 `--generate` to call Ollama and record answer-level proxies. The proxies are
 diagnostics, not semantic judge scores; human or model-based evaluation is
 needed for a publication-quality faithfulness claim.
+
+The checked-in `results/evaluation_results.json` contains retrieval-only
+benchmarks. It should not be reported as end-to-end RAG accuracy. Run the RAG
+script on the machine where the embedding, reranker, and Ollama models are
+already cached to produce the answer-level report.

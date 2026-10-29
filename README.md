@@ -203,6 +203,12 @@ and `answer_relevance_proxy` measures query-answer term overlap. They are not
 replacements for human or semantic judge evaluation, but provide reproducible
 diagnostics without claiming unsupported RAG accuracy.
 
+The existing checked-in benchmark numbers are retrieval-only: BM25, dense, and
+hybrid Recall@10, MRR@10, and NDCG@10. Do not mix those values with answer-level
+RAG scores. The live `/ask` endpoint has been verified locally, but aggregate
+answer metrics should be generated on the target machine because Qwen3
+generation and reranking are CPU-intensive.
+
 The generated dataset subset, FAISS index, evaluation outputs, and plots are ignored by git so the repository stays source-only when you push it.
 
 ## Starting the API
